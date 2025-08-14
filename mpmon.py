@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import fnmatch
+import glob
 import logging
 import os
 import selectors
@@ -46,17 +47,17 @@ class DebouncedHandler(FileSystemEventHandler):
     """File system event handler with debouncing to prevent rapid successive events."""
 
     def __init__(self, callback: Callable[[str, str], None],
-                 include_pattern: str = "*",
+                 include_patterns: list[str] = None,
                  debounce_secs: float = 0.5):
         super().__init__()
         self.callback = callback
-        self.include_pattern = include_pattern
+        self.include_patterns = include_patterns
         self.debounce_secs = debounce_secs
         self._timers: Dict[str, Tuple[str, threading.Timer]] = {}
         self._lock = threading.Lock()
 
     def _schedule(self, path: str, event_type: str):
-        if not fnmatch.fnmatch(os.path.basename(path), self.include_pattern):
+        if not any(fnmatch.fnmatch(os.path.basename(path), p) for p in self.include_patterns):
             return
 
         with self._lock:
@@ -106,11 +107,11 @@ class MicroPythonESP32REPL:
     """Main class for MicroPython ESP32 REPL with file watching capabilities."""
 
     def __init__(self, port: str, baud: int = 460800, folder: str = ".",
-                 watch_pattern: str = "*.py", debounce: float = 0.5):
+                 watch_patterns: list[str] = None, debounce: float = 0.5):
         self.port = port
         self.baud = baud
         self.folder = folder
-        self.watch_pattern = watch_pattern
+        self.watch_patterns = watch_patterns
         self.debounce = debounce
 
         self.pb: Optional[pyboard.Pyboard] = None
@@ -201,7 +202,7 @@ class MicroPythonESP32REPL:
 
         handler = DebouncedHandler(
             self._file_change_callback,
-            include_pattern=self.watch_pattern,
+            include_patterns=self.watch_patterns,
             debounce_secs=self.debounce
         )
 
@@ -211,7 +212,7 @@ class MicroPythonESP32REPL:
 
         logging.info(
             "[+] Started watching '%s' pattern='%s' debounce=%.2fs",
-            self.folder, self.watch_pattern, self.debounce
+            self.folder, ','.join(self.watch_patterns), self.debounce
         )
 
     def _file_change_callback(self, event_type: str, path: str):
@@ -478,17 +479,18 @@ def main():
     )
     parser.add_argument("port", help="Serial port (e.g. /dev/cu.SLAB_USBtoUART)")
     parser.add_argument("--folder", "-f", type=str, default=".", help="Folder to monitor")
-    parser.add_argument("--pattern", "-p", type=str, default="*.py", help="File name pattern to monitor")
+    parser.add_argument("--patterns", "-p", type=str, default="*.py,*.json,*.md", help="File name patterns to monitor")
     parser.add_argument("--baud", "-b", type=int, default=460800, help="Baud rate")
 
     args = parser.parse_args()
+
 
     # Create and use the REPL
     repl = MicroPythonESP32REPL(
         port=args.port,
         baud=args.baud,
         folder=args.folder,
-        watch_pattern=args.pattern
+        watch_patterns=args.patterns.split(',')
     )
     repl.init()
 
