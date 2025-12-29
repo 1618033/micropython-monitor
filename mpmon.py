@@ -48,16 +48,25 @@ class DebouncedHandler(FileSystemEventHandler):
 
     def __init__(self, callback: Callable[[str, str], bool],
                  include_patterns: list[str] = None,
+                 exclude_patterns: list[str] = None,
                  debounce_secs: float = 0.5):
         super().__init__()
         self.callback = callback
         self.include_patterns = include_patterns
+        self.exclude_patterns = exclude_patterns or []
         self.debounce_secs = debounce_secs
         self._timers: Dict[str, Tuple[str, threading.Timer]] = {}
         self._lock = threading.Lock()
 
     def _schedule(self, path: str, event_type: str):
-        if not any(fnmatch.fnmatch(os.path.basename(path), p) for p in self.include_patterns):
+        basename = os.path.basename(path)
+        
+        # Check if file matches include patterns
+        if not any(fnmatch.fnmatch(basename, p) for p in self.include_patterns):
+            return
+        
+        # Check if file matches exclude patterns (exclude takes precedence)
+        if any(fnmatch.fnmatch(basename, p) for p in self.exclude_patterns):
             return
 
         with self._lock:
@@ -107,11 +116,13 @@ class MicroPythonESP32REPL:
     """Main class for MicroPython ESP32 REPL with file watching capabilities."""
 
     def __init__(self, port: str, baud: int = 460800, folder: str = ".",
-                 watch_patterns: list[str] = None, debounce: float = 0.5):
+                include_patterns: list[str] = None, exclude_patterns: list[str] = None,
+                debounce: float = 0.5):
         self.port = port
         self.baud = baud
         self.folder = folder
-        self.watch_patterns = watch_patterns
+        self.include_patterns = include_patterns
+        self.exclude_patterns = exclude_patterns or []
         self.debounce = debounce
 
         self.pb: Optional[pyboard.Pyboard] = None
@@ -202,7 +213,8 @@ class MicroPythonESP32REPL:
 
         handler = DebouncedHandler(
             self._file_change_callback,
-            include_patterns=self.watch_patterns,
+            include_patterns=self.include_patterns,
+            exclude_patterns=self.exclude_patterns,
             debounce_secs=self.debounce
         )
 
@@ -210,10 +222,11 @@ class MicroPythonESP32REPL:
         self.observer.schedule(handler, path=self.folder, recursive=True)
         self.observer.start()
 
-        logging.info(
-            "[+] Started watching '%s' pattern='%s' debounce=%.2fs",
-            self.folder, ','.join(self.watch_patterns), self.debounce
-        )
+        log_msg = f"[+] Started watching '{self.folder}' include='{','.join(self.include_patterns)}'"
+        if self.exclude_patterns:
+            log_msg += f" exclude='{','.join(self.exclude_patterns)}'"
+        log_msg += f" debounce={self.debounce:.2f}s"
+        logging.info(log_msg)
 
     def _file_change_callback(self, event_type: str, path: str) -> bool:
         """Handle file change events."""
@@ -430,6 +443,7 @@ class MicroPythonESP32REPL:
         self.selector.register(sys.stdin, selectors.EVENT_READ, data="stdin")
 
         # Setup signal handlers
+        signal.signal(signal.SIGINT, self._handle_exit)
         signal.signal(signal.SIGTERM, self._handle_exit)
         signal.signal(signal.SIGHUP, self._handle_exit)
 
@@ -479,18 +493,22 @@ def main():
     )
     parser.add_argument("port", help="Serial port (e.g. /dev/cu.SLAB_USBtoUART)")
     parser.add_argument("--folder", "-f", type=str, default=".", help="Folder to monitor")
-    parser.add_argument("--patterns", "-p", type=str, default="*.py,*.json,*.md,*.pyi", help="File name patterns to monitor")
+    parser.add_argument("--include", "-p", type=str, default="*.py,*.json,*.md,*.pyi", help="File name patterns to monitor")
+    parser.add_argument("--exclude", "-e", type=str, default="ble_secrets.json,.micropico,pyrightconfig.json", help="File name patterns to exclude")
     parser.add_argument("--baud", "-b", type=int, default=460800, help="Baud rate")
 
     args = parser.parse_args()
 
+    # Parse exclude patterns
+    exclude_patterns = [p.strip() for p in args.exclude.split(',') if p.strip()] if args.exclude else []
 
     # Create and use the REPL
     repl = MicroPythonESP32REPL(
         port=args.port,
         baud=args.baud,
         folder=args.folder,
-        watch_patterns=args.patterns.split(',')
+        include_patterns=args.include.split(','),
+        exclude_patterns=exclude_patterns
     )
     repl.init()
 
