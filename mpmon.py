@@ -46,7 +46,7 @@ class RawConsole:
 class DebouncedHandler(FileSystemEventHandler):
     """File system event handler with debouncing to prevent rapid successive events."""
 
-    def __init__(self, callback: Callable[[str, str], None],
+    def __init__(self, callback: Callable[[str, str], bool],
                  include_patterns: list[str] = None,
                  debounce_secs: float = 0.5):
         super().__init__()
@@ -215,7 +215,7 @@ class MicroPythonESP32REPL:
             self.folder, ','.join(self.watch_patterns), self.debounce
         )
 
-    def _file_change_callback(self, event_type: str, path: str):
+    def _file_change_callback(self, event_type: str, path: str) -> bool:
         """Handle file change events."""
         if self.console:
             self.console.disable_raw()
@@ -452,7 +452,7 @@ class MicroPythonESP32REPL:
             for i in range(50):
                 try:
                     time.sleep(0.1)
-                except KeyboardInterrupt:
+                except Exception as e:
                     return
 
     def cleanup(self):
@@ -479,7 +479,7 @@ def main():
     )
     parser.add_argument("port", help="Serial port (e.g. /dev/cu.SLAB_USBtoUART)")
     parser.add_argument("--folder", "-f", type=str, default=".", help="Folder to monitor")
-    parser.add_argument("--patterns", "-p", type=str, default="*.py,*.json,*.md", help="File name patterns to monitor")
+    parser.add_argument("--patterns", "-p", type=str, default="*.py,*.json,*.md,*.pyi", help="File name patterns to monitor")
     parser.add_argument("--baud", "-b", type=int, default=460800, help="Baud rate")
 
     args = parser.parse_args()
@@ -498,5 +498,10 @@ def main():
 
     repl.console.disable_raw()
 
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    try:
+        main()
+    except KeyboardInterrupt:
+        print('Ctrl+C pressed')
+    finally:
+        pass
