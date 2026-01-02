@@ -680,7 +680,21 @@ class Pyboard:
             src_size = os.path.getsize(src)
             written = 0
         p = pathlib.Path(dest)
-        self.exec_(f"import os\n\ndef mkdir_p(path):\n    try:\n        os.mkdir(path)\n    except OSError as e:\n        if e.args[0] == 17:\n            return\n        elif e.args[0] == 2:\n            parent = '/'.join(path.split('/')[:-1])\n            if parent:\n                mkdir_p(parent)\n                os.mkdir(path)\n        else:\n            raise\n\nmkdir_p(\"{p.parent}\")")
+  #      print(f"import os\n\ndef mkdir_p(path):\n    try:\n        os.mkdir(path)\n    except OSError as e:\n        if e.args[0] == 17:\n            return\n        elif e.args[0] == 2:\n            parent = '/'.join(path.split('/')[:-1])\n            if parent:\n                mkdir_p(parent)\n                os.mkdir(path)\n        else:\n            raise\n\nmkdir_p(\"{p.parent}\")")
+
+        mkdirp_cmd = f"""
+import os
+def m(p):
+ try: os.mkdir(p)
+ except: pass
+ for i in range(1, len(p.split('/'))):
+  m('/'.join(p.split('/')[:i]))
+  m('{p.parent}')
+        """
+
+        self.exec_("import gc; gc.collect()")
+        # self.exec_(f"import os\n\ndef mkdir_p(path):\n    try:\n        os.mkdir(path)\n    except OSError as e:\n        if e.args[0] == 17:\n            return\n        elif e.args[0] == 2:\n            parent = '/'.join(path.split('/')[:-1])\n            if parent:\n                mkdir_p(parent)\n                os.mkdir(path)\n        else:\n            raise\n\nmkdir_p(\"{p.parent}\")")
+        self.exec_(mkdirp_cmd)
         self.exec_("f=open('%s','wb')\nw=f.write" % dest)
         with open(src, "rb") as f:
             while True:

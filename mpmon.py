@@ -458,16 +458,27 @@ class MicroPythonESP32REPL:
 
 
     def wait_for_device(self):
-        while True:
-            logging.info("[*] Waiting for device...")
-            if self.connect(True):
-                self.run()
+        try:
+            while not self.stop:
+                logging.info("[*] Waiting for device...")
+                if self.connect(True):
+                    self.run()
 
-            for i in range(50):
-                try:
+                # Check stop flag during sleep
+                for i in range(50):
+                    if self.stop:
+                        break
                     time.sleep(0.1)
-                except Exception as e:
-                    return
+            
+            # If we exited due to stop flag, cleanup
+            if self.stop:
+                logging.info("[*] Interrupted by user")
+                self.cleanup()
+                
+        except KeyboardInterrupt:
+            logging.info("[*] Interrupted by user")
+            self.cleanup()
+            raise
 
     def cleanup(self):
         """Clean up resources."""
