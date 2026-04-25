@@ -1,0 +1,10 @@
+[project]
+name = "micropython-monitor"
+version = "0.2.0"
+description = "Monitors code changes and uploads them to the device"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "pyserial>=3.5",
+    "watchdog>=6.0.0",
+]
